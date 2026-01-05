@@ -21,6 +21,7 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 app.use("/audio", express.static(UPLOAD_DIR));
+app.use("/uploads", express.static(UPLOAD_DIR));
 
 app.post("/recordings", upload.single("audio"), (req, res) => {
   const { id, tags, transcript, sentiment, duration, createdAt } = req.body;
@@ -85,6 +86,49 @@ app.delete("/recordings/:id", (req, res) => {
       res.json({ message: "Deleted" });
     }
   );
+});
+
+app.get("/uploads", (req, res) => {
+  try {
+    const files = fs.readdirSync(UPLOAD_DIR).map((name) => {
+      const fp = path.join(UPLOAD_DIR, name);
+      const stat = fs.statSync(fp);
+      return { name, size: stat.size, mtime: stat.mtime };
+    });
+
+    files.sort((a, b) => b.mtime - a.mtime);
+
+    const rows = files
+      .map((f) => {
+        const url = `/uploads/${encodeURIComponent(f.name)}`;
+        const sizeKb = Math.round(f.size / 1024);
+        const audioPreview =
+          /\.(mp3|wav|ogg|m4a|flac)$/i.test(f.name)
+            ? `<div><audio controls src="${url}"></audio></div>`
+            : "";
+        return `<li>
+          <a href="${url}" target="_blank" rel="noopener noreferrer">${f.name}</a>
+          — ${sizeKb} KB — ${f.mtime.toLocaleString()}
+          ${audioPreview}
+        </li>`;
+      })
+      .join("\n");
+
+    res.send(`<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Uploads</title>
+  <style>body{font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial} li{margin:10px 0}</style>
+</head>
+<body>
+  <h1>Uploads</h1>
+  <ul>${rows}</ul>
+</body>
+</html>`);
+  } catch (err) {
+    res.status(500).send("Unable to read uploads directory");
+  }
 });
 
 const PORT = process.env.PORT || 3000;
